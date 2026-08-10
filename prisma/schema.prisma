@@ -1,0 +1,269 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core customer profile
+model Customer {
+  id                    String   @id @default(cuid())
+  name                  String
+  email                 String   @unique
+  password              String   // Hash password, never store plain text
+  biologicalSex         String   // "male" | "female"
+  age                   Int
+  heightCentimeters     Int
+  weightKilograms       Float
+  bodyFatPercentage     Float?
+  muscleMassKilograms   Float?
+  activityLevel         String   // "sedentary" | "lightly_active" | "moderately_active" | "very_active" | "extremely_active"
+  trainingDaysPerWeek   Int
+  goal                  String   // "fat_loss_muscle_gain" | "weight_gain_muscle_gain"
+  onboardingCompleted   Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  bodyCompositions      BodyComposition[]
+  nutritionPlans        NutritionPlan[]
+  mealPlans             MealPlan[]
+  orders                Order[]
+  workouts              Workout[]
+  progressRecords       ProgressRecord[]
+  dailyCheckIns         DailyCheckIn[]
+  preferences           CustomerPreferences?
+}
+
+// Customer preferences and allergies
+model CustomerPreferences {
+  id                    String   @id @default(cuid())
+  customerId            String   @unique
+  allergies             String[] @default([]) // e.g., ["dairy", "seafood", "peanuts"]
+  preferences           String[] @default([]) // e.g., ["spicy", "high_protein", "no_preference"]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+// Body composition tracking
+model BodyComposition {
+  id                    String   @id @default(cuid())
+  customerId            String
+  date                  DateTime @default(now())
+  weightKilograms       Float
+  bodyFatPercentage     Float?
+  muscleMassKilograms   Float?
+  visceralFat           Float?
+  bmi                   Float?
+  bodyWaterPercentage   Float?
+  basalMetabolicRate    Int?
+  source                String   // "manual" | "body_scanner" | "api_import"
+  createdAt             DateTime @default(now())
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([date])
+}
+
+// Nutrition targets for a customer
+model NutritionPlan {
+  id                    String   @id @default(cuid())
+  customerId            String
+  date                  DateTime @default(now())
+  basalMetabolicRate    Int
+  totalDailyEnergyExpenditure Int
+  dailyCalories         Int
+  dailyProteinGrams     Int
+  dailyCarbohydrateGrams Int
+  dailyFatGrams         Int
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  mealPlan              MealPlan?
+
+  @@index([customerId])
+  @@index([date])
+}
+
+// Daily meal plan for a customer
+model MealPlan {
+  id                    String   @id @default(cuid())
+  customerId            String
+  nutritionPlanId       String   @unique
+  date                  DateTime @default(now())
+  targetCalories        Int
+  targetProteinGrams    Int
+  totalCalories         Int
+  totalProteinGrams     Int
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  nutritionPlan         NutritionPlan @relation(fields: [nutritionPlanId], references: [id], onDelete: Cascade)
+  meals                 PlannedMeal[]
+
+  @@index([customerId])
+  @@index([date])
+}
+
+// Individual meal in a meal plan
+model PlannedMeal {
+  id                    String   @id @default(cuid())
+  mealPlanId            String
+  time                  String   // "07:30"
+  type                  String   // "breakfast" | "lunch" | "smoothie_whey" | "dinner" | "recovery"
+  menuItemId            String?  // Can be null for smoothie-only meals
+  smoothieId            String?
+  wheyProductId         String?
+  calories              Int
+  proteinGrams          Int
+  createdAt             DateTime @default(now())
+
+  mealPlan              MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  menuItem              MenuItem? @relation(fields: [menuItemId], references: [id])
+  smoothie              Smoothie? @relation(fields: [smoothieId], references: [id])
+  wheyProduct           WheyProduct? @relation(fields: [wheyProductId], references: [id])
+
+  @@index([mealPlanId])
+}
+
+// Menu item database
+model MenuItem {
+  id                    String   @id @default(cuid())
+  name                  String
+  category              String   // "breakfast" | "lunch" | "dinner" | "snack"
+  proteinSource         String   // "chicken" | "beef" | "pork" | "seafood" | "vegetable"
+  servingSizeGrams      Int
+  calories              Int
+  proteinGrams          Int
+  carbohydrateGrams     Int
+  fatGrams              Int
+  price                 Int      // Price in VND
+  imageUrl              String?
+  ingredients           String[] @default([])
+  allergens             String[] @default([])
+  available             Boolean  @default(true)
+  suitableForFatLoss    Boolean  @default(true)
+  suitableForMuscleGain Boolean  @default(true)
+  suitableMealTimes     String[] @default([])
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  plannedMeals          PlannedMeal[]
+}
+
+// Smoothie product database
+model Smoothie {
+  id                    String   @id @default(cuid())
+  name                  String
+  servingSizeMilliliters Int
+  calories              Int
+  proteinGrams          Int
+  carbohydrateGrams     Int
+  fatGrams              Int
+  price                 Int      // Price in VND
+  imageUrl              String?
+  available             Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  plannedMeals          PlannedMeal[]
+}
+
+// Whey protein product database
+model WheyProduct {
+  id                    String   @id @default(cuid())
+  name                  String
+  scoops                Float
+  calories              Int
+  proteinGrams          Int
+  carbohydrateGrams     Int
+  fatGrams              Int
+  price                 Int      // Price in VND
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  plannedMeals          PlannedMeal[]
+}
+
+// F&B Order for kitchen
+model Order {
+  id                    String   @id @default(cuid())
+  customerId            String
+  mealPlanId            String?
+  plannedMealId         String?
+  status                String   @default("pending") // "pending" | "preparing" | "ready" | "delivered" | "completed" | "cancelled"
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([status])
+}
+
+// Workout session tracking
+model Workout {
+  id                    String   @id @default(cuid())
+  customerId            String
+  date                  DateTime @default(now())
+  programId             String?  // Training program reference
+  durationMinutes       Int?
+  estimatedCaloriesBurned Int?
+  status                String   @default("pending") // "pending" | "in_progress" | "completed"
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([date])
+}
+
+// Progress tracking (weight, body fat, muscle mass trends)
+model ProgressRecord {
+  id                    String   @id @default(cuid())
+  customerId            String
+  date                  DateTime @default(now())
+  weightKilograms       Float
+  bodyFatPercentage     Float?
+  muscleMassKilograms   Float?
+  waistCentimeters      Float?
+  chestCentimeters      Float?
+  armsCentimeters       Float?
+  createdAt             DateTime @default(now())
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([date])
+}
+
+// Daily check-in (energy, hunger, workout, nutrition, sleep, water)
+model DailyCheckIn {
+  id                    String   @id @default(cuid())
+  customerId            String
+  date                  DateTime @default(now())
+  energyLevel           Int?     // 1-5
+  hungerLevel           Int?     // 1-5
+  workoutCompleted      Boolean  @default(false)
+  nutritionFollowed     Boolean  @default(false)
+  sleepHours            Float?
+  waterLiters           Float?
+  notes                 String?
+  createdAt             DateTime @default(now())
+
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([date])
+}
